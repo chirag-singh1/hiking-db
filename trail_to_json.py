@@ -5,11 +5,7 @@ import time
 import traceback
 import sys
 
-NAMES = ['idaho', 'illinois', 'indiana',
-         'iowa', 'kansas', 'kentucky', 'louisiana', 'maine', 'maryland', 'massachusetts',
-         'michigan', 'minnesota', 'mississippi', 'missouri', 'montana', 'nebraska',
-         'nevada', 'new-hampshire', 'new-jersey', 'new-mexico', 'new-york', 'north-carolina',
-         'north-dakota', 'ohio', 'oklahoma', 'oregon', 'pennsylvania', 'rhode-island',
+NAMES = ['ohio', 'oklahoma', 'oregon', 'pennsylvania', 'rhode-island',
          'south-carolina', 'south-dakota', 'tennessee', 'texas', 'utah', 'vermont',
          'virginia', 'washington', 'washington-dc', 'west-virginia', 'wisconsin', 'wyoming']
 
@@ -36,14 +32,11 @@ for STATE_NAME in NAMES:
     num_alt = 0
     num_dalt = 0
     num_grade = 0
+    n_skipped = 0
     st = time.time()
     for url in infile.readlines():
-        if num_url != 0:
-            outfile.write(',\n')
-        num_url += 1
         x = requests.get(url.strip())
         soup = BeautifulSoup(x.text, 'html.parser')
-        stats = [s.get_text().strip() for s in soup.find(id="trail-stats-bar").findAll('h3')]
         trail = {}
         trail['url'] = url.strip()
 
@@ -71,98 +64,106 @@ for STATE_NAME in NAMES:
         except:
             printe('No gpx')
 
-        tt = soup.find('div', {'id': 'trail-text'})
-        trail['info-text'] = {}
         try:
-            trail['info-text']['overview'] = tt.find(lambda t: t.name == 'h3' and 'Overview' in t.text).find_next_siblings()[0].get_text().strip()
-            num_overview +=1
+            tt = soup.find('div', {'id': 'trail-text'})
+            trail['info-text'] = {}
+            try:
+                trail['info-text']['overview'] = tt.find(lambda t: t.name == 'h3' and 'Overview' in t.text).find_next_siblings()[0].get_text().strip()
+                num_overview +=1
+            except:
+                printe('No overview')
+
+            try:
+                trail['info-text']['description'] = tt.find(lambda t: t.name == 'h3' and 'Description' in t.text).find_next_siblings()[0].get_text().strip()
+                num_descr += 1
+            except:
+                printe('No description')
+
+            try:
+                trail['info-text']['features'] = tt.find(lambda t: t.name == 'h3' and 'Features' in t.text).find('span').get_text().strip()
+                num_ft += 1
+            except:
+                printe('No features')
+
+            try:
+                trail['info-text']['condition'] = soup.find('span', {'class': 'condition'}).get_text().strip()
+                num_cond += 1
+            except:
+                printe('No condition')
+
+            try:
+                trail['photo'] = soup.find('a', {'class': 'photo-link'})['href']
+                num_photo += 1
+            except:
+                printe('No photo')
+
+            try:
+                slist = soup.find('span', {'id': 'title-stars'}).get_text().strip().split(' ')
+                rating = float(slist[0])
+                num_reviewers = int(slist[1][1:-1])
+                trail['ratings'] = {
+                    'rating': rating,
+                    'num_reviewers': num_reviewers
+                }
+
+                num_rated += 1
+            except:
+                printe('No ratings')
+
+            trail['stats'] = {}
+            stats = soup.find('div', {'id': 'trail-stats-bar'}).findChildren(recursive=False)
+            try:
+                dist = float(stats[0].find('span', {'class': 'imperial'}).get_text().strip().split(' ')[0])
+                dist_type = stats[0].find_all('h3')[-1].get_text().strip()
+                trail['stats']['dist'] = dist
+                trail['stats']['dist-type'] = dist_type
+                num_dist += 1
+
+            except:
+                printe('No distance')
+
+            try:
+                alt_range = [int(s.get_text().strip().split(' ')[0][:-1].replace(',', '')) for s in stats[1].find_all('span', {'class': 'imperial'})]
+                assert len(alt_range) == 2
+                trail['stats']['alt-range'] = alt_range
+
+                num_alt += 1
+            except:
+                printe('No altitude range')
+
+            try:
+                alt_change = [int(s.get_text().strip().split(' ')[0][:-1].replace(',', '')) for s in stats[2].find_all('span', {'class': 'imperial'})]
+                assert len(alt_change) == 2
+                trail['stats']['alt-change'] = alt_change
+
+                num_dalt += 1
+            except:
+                traceback.print_exception()
+                printe('No altitude change')
+
+            try:
+                grade = [float(s.get_text().strip()[:-1]) for s in stats[3].find_all('h3')]
+                assert len(grade) == 2
+                trail['stats']['avg-grade'] = grade[0]
+                trail['stats']['max-grade'] = grade[1]
+                num_grade += 1
+            except:
+                printe('No grade')
+
+            if num_url != 0:
+                outfile.write(',\n')
+            num_url += 1
+            outfile.write(json.dumps(trail))
         except:
-            printe('No overview')
-
-        try:
-            trail['info-text']['description'] = tt.find(lambda t: t.name == 'h3' and 'Description' in t.text).find_next_siblings()[0].get_text().strip()
-            num_descr += 1
-        except:
-            printe('No description')
-
-        try:
-            trail['info-text']['features'] = tt.find(lambda t: t.name == 'h3' and 'Features' in t.text).find('span').get_text().strip()
-            num_ft += 1
-        except:
-            printe('No features')
-
-        try:
-            trail['info-text']['condition'] = soup.find('span', {'class': 'condition'}).get_text().strip()
-            num_cond += 1
-        except:
-            printe('No condition')
-
-        try:
-            trail['photo'] = soup.find('a', {'class': 'photo-link'})['href']
-            num_photo += 1
-        except:
-            printe('No photo')
-
-        try:
-            slist = soup.find('span', {'id': 'title-stars'}).get_text().strip().split(' ')
-            rating = float(slist[0])
-            num_reviewers = int(slist[1][1:-1])
-            trail['ratings'] = {
-                'rating': rating,
-                'num_reviewers': num_reviewers
-            }
-
-            num_rated += 1
-        except:
-            printe('No ratings')
-
-        trail['stats'] = {}
-        stats = soup.find('div', {'id': 'trail-stats-bar'}).findChildren(recursive=False)
-        try:
-            dist = float(stats[0].find('span', {'class': 'imperial'}).get_text().strip().split(' ')[0])
-            dist_type = stats[0].find_all('h3')[-1].get_text().strip()
-            trail['stats']['dist'] = dist
-            trail['stats']['dist-type'] = dist_type
-            num_dist += 1
-
-        except:
-            printe('No distance')
-
-        try:
-            alt_range = [int(s.get_text().strip().split(' ')[0][:-1].replace(',', '')) for s in stats[1].find_all('span', {'class': 'imperial'})]
-            assert len(alt_range) == 2
-            trail['stats']['alt-range'] = alt_range
-
-            num_alt += 1
-        except:
-            printe('No altitude range')
-
-        try:
-            alt_change = [int(s.get_text().strip().split(' ')[0][:-1].replace(',', '')) for s in stats[2].find_all('span', {'class': 'imperial'})]
-            assert len(alt_change) == 2
-            trail['stats']['alt-change'] = alt_change
-
-            num_dalt += 1
-        except:
-            traceback.print_exception()
-            printe('No altitude change')
-
-        try:
-            grade = [float(s.get_text().strip()[:-1]) for s in stats[3].find_all('h3')]
-            assert len(grade) == 2
-            trail['stats']['avg-grade'] = grade[0]
-            trail['stats']['max-grade'] = grade[1]
-            num_grade += 1
-        except:
-            printe('No grade')
-
-        outfile.write(json.dumps(trail))
+            n_skipped += 1
+            printe('Skipped trail')
 
     outfile.write('\n]')
     infile.close()
     outfile.close()
 
     print(f'{num_url} processed in {time.time() - st} seconds')
+    print(f'{n_skipped} trails skipped')
     print('Percent available:')
     print(f'Difficulty: {num_diff/num_url}')
     print(f'Trailhead: {num_th/num_url}')
